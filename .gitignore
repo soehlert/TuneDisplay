@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/linux,macos,python,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,macos,python,visualstudiocode
 
+### Tunedisplay specific ###
+lastfm_nowplaying_art.png
+
 ### Linux ###
 *~
 
