@@ -10,18 +10,19 @@ authors = [{name = "Sam Oehlert", email = "sam.oehlert@gmail.com"}]
 requires-python = ">=3.12"
 
 dependencies = [
-    "requests",
-    "pydantic>=2.0",
+  "requests",
+  "pydantic>=2.0",
+  "python-dotenv",
 ]
 
 [project.optional-dependencies]
 display = [
-    "Pillow",
-    "pygame",
+  "Pillow",
+  "pygame",
 ]
 
 dev = [
-    "ruff",
+  "ruff",
 ]
 
 [tool.ruff]
