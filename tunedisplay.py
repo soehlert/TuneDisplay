@@ -261,7 +261,7 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
     """Run the main loop to monitor Last.fm Now Playing status."""
     previous_track: Track | None = None
     logger.info(
-        "Starting continuous monitoring for user '%s'.",
+        "Starting continuous monitoring for user %s",
         client.username,
     )
 
