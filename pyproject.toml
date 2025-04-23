@@ -24,6 +24,7 @@ display = [
 
 dev = [
   "ruff",
+  "isort"
 ]
 
 [tool.ruff]
