@@ -303,7 +303,7 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
 
 def cleanup(image_filename: str) -> None:
     """Perform cleanup tasks on shutdown."""
-    logger.info("Performing cleanup...")
+    logger.info("Performing cleanup")
     if Path(image_filename).exists():
         try:
             Path(image_filename).unlink()
