@@ -1,13 +1,30 @@
+"""Gather the current playing song from last.fm and display it."""
+
 import argparse
 import json
+import logging
 import os
 import shutil
 import subprocess
 import sys
+import importlib.metadata
+import time
+
+from typing import Optional, Tuple
 
 import requests
 from pydantic import BaseModel, HttpUrl, ValidationError
+from pythonjsonlogger.json import JsonFormatter
+
 from dotenv import load_dotenv
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logHandler = logging.StreamHandler()
+formatter = JsonFormatter()
+logHandler.setFormatter(formatter)
+if not logger.handlers:
+    logger.addHandler(logHandler)
 
 
 def open_file(filepath):
@@ -15,18 +32,47 @@ def open_file(filepath):
     try:
         opener = "open" if sys.platform == "darwin" else "xdg-open"
         if shutil.which(opener):
-             subprocess.run([opener, filepath], check=True)
+            subprocess.run([opener, filepath], check=True)
         else:
-            print(f"Could not find '{opener}' command to open the image.")
-            print(f"Image saved as: {filepath}")
-
+            logger.error("Could not find %s command to open the image.", opener)
     except Exception as e:
-        print(f"Error opening image file: {e}")
-        print(f"Image saved as: {filepath}")
+        logger.error("Error opening image file: %s", e)
+
+
+def setup_and_validate() -> Tuple[argparse.Namespace, str, str, str]:
+    """Load config, parse args, and validate required settings."""
+    load_dotenv()
+
+    api_key = os.environ.get("LASTFM_API_KEY")
+    username = os.environ.get("LASTFM_USERNAME")
+    image_filename = os.environ.get("TUNEDISPLAY_IMAGE_FILENAME") or "lastfm_nowplaying_art.png"
+
+    parser = argparse.ArgumentParser(description="Fetch Now Playing from Last.fm and optionally display album art.")
+    parser.add_argument(
+        "--no-art",
+        action="store_true",
+        help="Disable downloading and displaying album art",
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=3,
+        help="Seconds to wait between checking Last.fm (default: 3)",
+    )
+    args = parser.parse_args()
+
+    if not api_key or api_key == "YOUR_API_KEY":
+        logger.error("Configuration Error: Last.fm API key not found or is placeholder.")
+        sys.exit("Please provide LASTFM_API_KEY via .env or environment variable.")
+    if not username or username == "YOUR_USERNAME":
+        logger.error("Configuration Error: Last.fm username not found or is placeholder.")
+        sys.exit("Please provide LASTFM_USERNAME via .env or environment variable.")
+
+    return args, api_key, username, image_filename
 
 
 class Track(BaseModel):
-    """Represents a music track with its details using Pydantic."""
+    """Represent a music track."""
 
     artist: str
     name: str
@@ -37,15 +83,14 @@ class Track(BaseModel):
     def __str__(self):
         """String representation of the track."""
         art_status = f"URL: {self.art_url}" if self.art_url else "Not available"
-        return (f"**Artist:** {self.artist}\n"
-                f"**Track:** {self.name}\n"
-                f"**Album:** {self.album}\n"
-                f"**Album Art:** {art_status}")
+        return f"Artist: {self.artist}\nTrack: {self.name}\nAlbum: {self.album}\nAlbum Art: {art_status}"
+
 
 class LastFmClient:
     """Client to fetch Now Playing data from Last.fm."""
-
     BASE_URL = "http://ws.audioscrobbler.com/2.0/"
+    APP_NAME = "TuneDisplay"
+    CONTACT_INFO = "https://github.com/soehlert/tunedisplay"
 
     def __init__(self, api_key, username):
         if not api_key or not username:
@@ -53,8 +98,17 @@ class LastFmClient:
         self.api_key = api_key
         self.username = username
 
+        try:
+            app_version = importlib.metadata.version("tunedisplay")
+        except importlib.metadata.PackageNotFoundError:
+            app_version = "unknown"
+            logger.error("Warning: Could not determine package version for %s.", self.APP_NAME)
+
+        user_agent_string = f"{self.APP_NAME}-{app_version}: {self.CONTACT_INFO}"
+        self.headers = {"User-Agent": user_agent_string}
+
     def _make_request(self, params):
-        """Internal helper to make API requests."""
+        """Make the API requests."""
         params["api_key"] = self.api_key
         params["user"] = self.username
         params["format"] = "json"
@@ -64,18 +118,18 @@ class LastFmClient:
             response.raise_for_status()
             data = response.json()
             if "error" in data:
-                 print(f"Last.fm API Error {data['error']}: {data['message']}")
-                 return None
+                logger.error("Last.fm API Error %s: %s", data["error"], data["message"])
+                return None
             return data
         except requests.exceptions.RequestException as e:
-            print(f"Error connecting to Last.fm API: {e}")
+            logger.error("Error connecting to Last.fm API: %s", e)
             return None
         except json.JSONDecodeError:
-            print("Error decoding the response from Last.fm API.")
+            logger.error("Error decoding the response from Last.fm API.")
             return None
 
     def get_now_playing(self) -> Track | None:
-        """Fetches the currently playing track."""
+        """Fetch the currently playing track."""
         params = {
             "method": "user.getrecenttracks",
             "limit": 1,
@@ -95,8 +149,11 @@ class LastFmClient:
                     album = latest_track_data["album"]["#text"]
                     art_url_str = None
 
-                    if "image" in latest_track_data and isinstance(latest_track_data["image"], list) and len(
-                            latest_track_data["image"]) > 0:
+                    if (
+                        "image" in latest_track_data
+                        and isinstance(latest_track_data["image"], list)
+                        and len(latest_track_data["image"]) > 0
+                    ):
                         for img in latest_track_data["image"]:
                             if img.get("size") == "extralarge":
                                 art_url_str = img.get("#text")
@@ -110,93 +167,113 @@ class LastFmClient:
                         "album": album,
                         "art_url": art_url_str if art_url_str else None,
                     }
-
-                    # Validate and create the Pydantic model
                     validated_track = Track(**track_data)
                     return validated_track
+
                 return None
-            print("Could not parse track information from Last.fm response.")
+            logger.warning("Could not parse track information from Last.fm response.")
             return None
         except (KeyError, IndexError) as e:
-            print(f"Error parsing the response data structure. Missing key or index: {e}")
+            logger.error("Error parsing the response data structure. Missing key or index: %s", e)
             return None
         except ValidationError as e:
-            print(f"Data validation error creating Track object: {e}")
+            logger.error("Data validation error creating Track object: %s", e)
             return None
 
-    @staticmethod
-    def download_and_display_art(track: Track, filename="temp_album_art.png"):
-        """Downloads and opens the album art for a given track."""
+
+    def download_and_display_art(self, track: Track, filename="temp_album_art.png"):
+        """Download and open the album art for a given track."""
         if not track or not track.art_url:
-            print("No album art URL available for this track.")
+            logger.info("No album art URL available for this track.")
             return False
 
-        print(f"Downloading album art from: {track.art_url}")
         try:
-            # Convert HttpUrl back to string for requests
-            img_response = requests.get(str(track.art_url), stream=True)
+            img_response = requests.get(str(track.art_url), stream=True, headers=self.headers)
             img_response.raise_for_status()
 
             with open(filename, "wb") as f:
                 for chunk in img_response.iter_content(1024):
                     f.write(chunk)
 
-            print(f"Opening {filename}...")
             open_file(filename)
             return True
 
         except requests.exceptions.RequestException as img_e:
-            print(f"Error downloading image: {img_e}")
+            logging.error("Error downloading image: %s", img_e)
             return False
         except OSError as io_e:
-             print(f"Error saving image file: {io_e}")
-             return False
+            logging.error("Error saving image file: %s", io_e)
+            return False
+
+
+def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_filename: str):
+    """Run the main loop to monitor Last.fm Now Playing status."""
+    previous_track: Optional[Track] = None
+    logger.info("Starting continuous monitoring for user '%s'.",client.username,)
+
+    while True:
+        try:
+            now_playing_track = client.get_now_playing()
+
+            if now_playing_track != previous_track:
+                if now_playing_track:
+                    track_dict = now_playing_track.model_dump(mode="json")
+                    log_message = "New track playing" if previous_track else "Playback started"
+                    event_type = "now_playing_started" if not previous_track else "now_playing_changed"
+                    logger.info(log_message, extra={"event_type": event_type, "track_details": track_dict})
+
+                    if not args.no_art and now_playing_track.art_url:
+                        logger.info(
+                            "Attempting to download and display album art",
+                            extra={"art_url": str(now_playing_track.art_url)},
+                        )
+                        client.download_and_display_art(now_playing_track, image_filename)
+
+                elif previous_track:
+                    logger.info(
+                        "Playback stopped",
+                        extra={
+                            "event_type": "now_playing_stopped",
+                            "previous_track_details": previous_track.model_dump(mode="json"),
+                        },
+                    )
+
+                previous_track = now_playing_track
+
+        except Exception as loop_error:
+            logger.error("Error during check cycle: %s", loop_error, exc_info=True)
+            time.sleep(args.interval * 2)
+
+        time.sleep(args.interval)
+
+
+def cleanup(image_filename: str):
+    """Perform cleanup tasks on shutdown."""
+    logger.info("Performing cleanup...")
+    if os.path.exists(image_filename):
+        try:
+            os.remove(image_filename)
+            logger.info("Removed temporary image file: %s", image_filename)
+        except OSError as e:
+            logger.error("Error removing temporary image file '%s': %s", image_filename, e, exc_info=True)
 
 
 if __name__ == "__main__":
-    load_dotenv()
-    API_KEY = os.environ.get('LASTFM_API_KEY')
-    USERNAME = os.environ.get('LASTFM_USERNAME')
-    IMAGE_FILENAME = os.environ.get('TUNEDISPLAY_IMAGE_FILENAME')
+    cli_args, lastfm_api_key, lastfm_username, album_art = setup_and_validate()
 
-    parser = argparse.ArgumentParser(description="Fetch Now Playing from Last.fm and optionally display album art.")
-    parser.add_argument(
-        "--no-art",
-        action="store_true",
-        help="Disable downloading and displaying album art.",
-    )
-    args = parser.parse_args()
-
-    if not API_KEY or API_KEY == "YOUR_API_KEY":
-        print("Error: Please replace 'YOUR_API_KEY' with your actual Last.fm API key.")
-        sys.exit(1)
-    if not USERNAME or USERNAME == "YOUR_USERNAME":
-        print("Error: Please replace 'YOUR_USERNAME' with your actual Last.fm username.")
+    try:
+        lastfm_client = LastFmClient(api_key=lastfm_api_key, username=lastfm_username)
+    except ValueError as ve:
+        logger.error("Client Initialization Error: %s", ve, exc_info=True)
         sys.exit(1)
 
     try:
-        client = LastFmClient(api_key=API_KEY, username=USERNAME)
-        now_playing_track = client.get_now_playing()
-
-        if now_playing_track:
-            print("**Now Playing:**")
-            print(now_playing_track)
-
-            if args.no_art:
-                print("Album art display disabled via --no-art flag.")
-            elif now_playing_track.art_url:
-                print("Attempting to download and display album art...")
-                # Renamed the function slightly for clarity
-                client.download_and_display_art(now_playing_track, IMAGE_FILENAME)
-            else:
-                # This case is handled inside download_and_display_art_dev,
-                # but we can add a note here too.
-                print("No album art URL found for this track.")
-
-        else:
-            print("No track currently playing on Last.fm or failed to retrieve data.")
-
-    except ValueError as ve:
-        print(f"Configuration Error: {ve}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        run_monitoring_loop(lastfm_client, cli_args, album_art)
+    except KeyboardInterrupt:
+        logger.info("Stopping monitoring script due to user request.")
+        cleanup(album_art)
+        sys.exit(0)
+    except Exception as main_error:
+        logger.error("An unexpected critical error occurred in the main loop: %s", main_error, exc_info=True)
+        cleanup(album_art)
+        sys.exit(1)
