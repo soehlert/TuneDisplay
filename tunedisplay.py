@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
+from typing import Any
 
 import requests
 from dotenv import load_dotenv
@@ -17,23 +19,38 @@ from pythonjsonlogger.json import JsonFormatter
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-logHandler = logging.StreamHandler()
+log_handler = logging.StreamHandler()
 formatter = JsonFormatter()
-logHandler.setFormatter(formatter)
+log_handler.setFormatter(formatter)
 if not logger.handlers:
-    logger.addHandler(logHandler)
+    logger.addHandler(log_handler)
 
 
-def open_file(filepath):
-    """Opens a file with the default application on macOS/Linux."""
-    try:
-        opener = "open" if sys.platform == "darwin" else "xdg-open"
-        if shutil.which(opener):
-            subprocess.run([opener, filepath], check=True)
-        else:
-            logger.error("Could not find %s command to open the image.", opener)
-    except Exception as e:
-        logger.error("Error opening image file: %s", e)
+def open_file(filepath: str) -> None:
+    """Open a file with the default application on macOS/Linux."""
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    opener_path = shutil.which(opener)
+
+    if opener_path:
+        try:
+            # ruff: noqa: S603
+            subprocess.run([opener_path, filepath], check=True)
+
+        except FileNotFoundError:
+            logger.exception("Command '%s' not found at execution time.", opener_path)
+        except subprocess.CalledProcessError as e:
+            logger.exception(
+                "Command '%s %s' failed with exit code %s.",
+                opener_path,
+                filepath,
+                e.returncode,
+            )
+    else:
+        logger.warning(
+            "Could not find the command '%s' in system PATH. Cannot open %s.",
+            opener,
+            filepath,
+        )
 
 
 def setup_and_validate() -> tuple[argparse.Namespace, str, str, str]:
@@ -77,8 +94,8 @@ class Track(BaseModel):
     # Use HttpUrl for validation, Optional if it might be missing
     art_url: HttpUrl | None = None
 
-    def __str__(self):
-        """String representation of the track."""
+    def __str__(self) -> str:
+        """Represent a track in string format."""
         art_status = f"URL: {self.art_url}" if self.art_url else "Not available"
         return f"Artist: {self.artist}\nTrack: {self.name}\nAlbum: {self.album}\nAlbum Art: {art_status}"
 
@@ -90,9 +107,11 @@ class LastFmClient:
     APP_NAME = "TuneDisplay"
     CONTACT_INFO = "https://github.com/soehlert/tunedisplay"
 
-    def __init__(self, api_key, username):
+    def __init__(self, api_key: str, username: str) -> None:
+        """Initialize a Last.fm client."""
         if not api_key or not username:
-            raise ValueError("API key and username are required.")
+            msg = "API key and username are required."
+            raise ValueError(msg)
         self.api_key = api_key
         self.username = username
 
@@ -100,31 +119,32 @@ class LastFmClient:
             app_version = importlib.metadata.version("tunedisplay")
         except importlib.metadata.PackageNotFoundError:
             app_version = "unknown"
-            logger.error("Warning: Could not determine package version for %s.", self.APP_NAME)
+            logger.exception("Warning: Could not determine package version for %s.", self.APP_NAME)
 
         user_agent_string = f"{self.APP_NAME}-{app_version}: {self.CONTACT_INFO}"
         self.headers = {"User-Agent": user_agent_string}
 
-    def _make_request(self, params):
+    def _make_request(self, params: dict[str, Any]) -> dict[str, Any] | None:
         """Make the API requests."""
         params["api_key"] = self.api_key
         params["user"] = self.username
         params["format"] = "json"
 
         try:
-            response = requests.get(self.BASE_URL, params=params)
+            response = requests.get(self.BASE_URL, params=params, timeout=5)
             response.raise_for_status()
             data = response.json()
             if "error" in data:
                 logger.error("Last.fm API Error %s: %s", data["error"], data["message"])
                 return None
-            return data
-        except requests.exceptions.RequestException as e:
-            logger.error("Error connecting to Last.fm API: %s", e)
+        except requests.exceptions.RequestException:
+            logger.exception("Error connecting to Last.fm API")
             return None
         except json.JSONDecodeError:
-            logger.error("Error decoding the response from Last.fm API.")
+            logger.exception("Error decoding the response from Last.fm API.")
             return None
+        else:
+            return data
 
     def get_now_playing(self) -> Track | None:
         """Fetch the currently playing track."""
@@ -165,45 +185,47 @@ class LastFmClient:
                         "album": album,
                         "art_url": art_url_str if art_url_str else None,
                     }
-                    validated_track = Track(**track_data)
-                    return validated_track
+
+                    return Track(**track_data)
 
                 return None
             logger.warning("Could not parse track information from Last.fm response.")
+        except (KeyError, IndexError):
+            logger.exception("Error parsing the response data structure. Missing key or index")
             return None
-        except (KeyError, IndexError) as e:
-            logger.error("Error parsing the response data structure. Missing key or index: %s", e)
+        except ValidationError:
+            logger.exception("Data validation error creating Track object")
             return None
-        except ValidationError as e:
-            logger.error("Data validation error creating Track object: %s", e)
+        else:
             return None
 
-    def download_and_display_art(self, track: Track, filename="temp_album_art.png"):
+    def download_and_display_art(self, track: Track, filename: str = "temp_album_art.png") -> bool:
         """Download and open the album art for a given track."""
         if not track or not track.art_url:
             logger.info("No album art URL available for this track.")
             return False
 
         try:
-            img_response = requests.get(str(track.art_url), stream=True, headers=self.headers)
+            img_response = requests.get(str(track.art_url), stream=True, headers=self.headers, timeout=5)
             img_response.raise_for_status()
 
-            with open(filename, "wb") as f:
+            with Path(filename).open("wb") as f:
                 for chunk in img_response.iter_content(1024):
                     f.write(chunk)
 
             open_file(filename)
+
+        except requests.exceptions.RequestException:
+            logger.exception("Error downloading image")
+            return False
+        except OSError:
+            logger.exception("Error saving image file")
+            return False
+        else:
             return True
 
-        except requests.exceptions.RequestException as img_e:
-            logging.exception("Error downloading image: %s", img_e)
-            return False
-        except OSError as io_e:
-            logging.exception("Error saving image file: %s", io_e)
-            return False
 
-
-def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_filename: str):
+def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_filename: str) -> None:
     """Run the main loop to monitor Last.fm Now Playing status."""
     previous_track: Track | None = None
     logger.info(
@@ -240,22 +262,22 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
 
                 previous_track = now_playing_track
 
-        except Exception as loop_error:
-            logger.error("Error during check cycle: %s", loop_error, exc_info=True)
+        except Exception:
+            logger.exception("Error during check cycle")
             time.sleep(args.interval * 2)
 
         time.sleep(args.interval)
 
 
-def cleanup(image_filename: str):
+def cleanup(image_filename: str) -> None:
     """Perform cleanup tasks on shutdown."""
     logger.info("Performing cleanup...")
-    if os.path.exists(image_filename):
+    if Path(image_filename).exists():
         try:
-            os.remove(image_filename)
+            Path(image_filename).unlink()
             logger.info("Removed temporary image file: %s", image_filename)
-        except OSError as e:
-            logger.error("Error removing temporary image file '%s': %s", image_filename, e, exc_info=True)
+        except OSError:
+            logger.exception("Error removing temporary image file %s", image_filename)
 
 
 if __name__ == "__main__":
@@ -263,8 +285,8 @@ if __name__ == "__main__":
 
     try:
         lastfm_client = LastFmClient(api_key=lastfm_api_key, username=lastfm_username)
-    except ValueError as ve:
-        logger.error("Client Initialization Error: %s", ve, exc_info=True)
+    except ValueError:
+        logger.exception("Client Initialization Error")
         sys.exit(1)
 
     try:
@@ -273,7 +295,7 @@ if __name__ == "__main__":
         logger.info("Stopping monitoring script due to user request.")
         cleanup(album_art)
         sys.exit(0)
-    except Exception as main_error:
-        logger.error("An unexpected critical error occurred in the main loop: %s", main_error, exc_info=True)
+    except Exception:
+        logger.exception("An unexpected critical error occurred in the main loop")
         cleanup(album_art)
         sys.exit(1)
