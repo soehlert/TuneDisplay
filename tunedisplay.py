@@ -88,6 +88,7 @@ class Track(BaseModel):
 
 class LastFmClient:
     """Client to fetch Now Playing data from Last.fm."""
+
     BASE_URL = "http://ws.audioscrobbler.com/2.0/"
     APP_NAME = "TuneDisplay"
     CONTACT_INFO = "https://github.com/soehlert/tunedisplay"
@@ -180,7 +181,6 @@ class LastFmClient:
             logger.error("Data validation error creating Track object: %s", e)
             return None
 
-
     def download_and_display_art(self, track: Track, filename="temp_album_art.png"):
         """Download and open the album art for a given track."""
         if not track or not track.art_url:
@@ -209,7 +209,10 @@ class LastFmClient:
 def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_filename: str):
     """Run the main loop to monitor Last.fm Now Playing status."""
     previous_track: Optional[Track] = None
-    logger.info("Starting continuous monitoring for user '%s'.",client.username,)
+    logger.info(
+        "Starting continuous monitoring for user '%s'.",
+        client.username,
+    )
 
     while True:
         try:
