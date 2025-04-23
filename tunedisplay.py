@@ -14,7 +14,7 @@ from typing import Any
 
 import requests
 from dotenv import load_dotenv
-from pydantic import BaseModel, HttpUrl, ValidationError
+from pydantic import BaseModel, HttpUrl
 from pythonjsonlogger.json import JsonFormatter
 
 logger = logging.getLogger()
@@ -116,7 +116,7 @@ class LastFmClient:
         self.username = username
 
         try:
-            app_version = importlib.metadata.version("tunedisplay")
+            app_version = importlib.metadata.version(self.APP_NAME)
         except importlib.metadata.PackageNotFoundError:
             app_version = "unknown"
             logger.exception("Warning: Could not determine package version for %s.", self.APP_NAME)
@@ -135,7 +135,11 @@ class LastFmClient:
             response.raise_for_status()
             data = response.json()
             if "error" in data:
-                logger.error("Last.fm API Error %s: %s", data["error"], data["message"])
+                logger.error(
+                    "Last.fm API Error %s: %s",
+                    data.get("error", "N/A"),
+                    data.get("message", "No message provided"),
+                )
                 return None
         except requests.exceptions.RequestException:
             logger.exception("Error connecting to Last.fm API")
@@ -145,6 +149,55 @@ class LastFmClient:
             return None
         else:
             return data
+
+    @staticmethod
+    def _extract_image_url(track_data: dict[str, Any]) -> str | None:
+        """Extract the 'extralarge' image URL or the last available one."""
+        art_url_str = None
+        image_list = track_data.get("image")
+
+        if isinstance(image_list, list) and image_list:
+            for img in image_list:
+                if isinstance(img, dict) and img.get("size") == "extralarge":
+                    art_url_str = img.get("#text")
+                    if art_url_str:
+                        break
+
+            if not art_url_str:
+                last_image = image_list[-1]
+                if isinstance(last_image, dict):
+                    art_url_str = last_image.get("#text")
+
+        return art_url_str if art_url_str else None
+
+    def _create_track(self, track_data: dict[str, Any]) -> Track | None:
+        """Create a track object."""
+        try:
+            artist = track_data.get("artist", {}).get("#text")
+            track_name = track_data.get("name")
+            album = track_data.get("album", {}).get("#text")
+
+            if not all([artist, track_name, album]):
+                logger.warning(
+                    "Missing essential track data (artist, name, or album) in: %s",
+                    track_data,
+                )
+                return None
+
+            art_url = self._extract_image_url(track_data)
+
+            track_info = {
+                "artist": artist,
+                "name": track_name,
+                "album": album,
+                "art_url": art_url,
+            }
+
+            return Track(**track_info)
+
+        except (AttributeError, TypeError, KeyError):
+            logger.exception("Error accessing expected keys in track data. Data: %s", track_data)
+            return None
 
     def get_now_playing(self) -> Track | None:
         """Fetch the currently playing track."""
@@ -158,45 +211,24 @@ class LastFmClient:
             return None
 
         try:
-            if "recenttracks" in data and "track" in data["recenttracks"] and data["recenttracks"]["track"]:
-                latest_track_data = data["recenttracks"]["track"][0]
+            recent_tracks = data.get("recenttracks", {})
+            track_list = recent_tracks.get("track", [])
 
-                if "@attr" in latest_track_data and latest_track_data["@attr"].get("nowplaying") == "true":
-                    artist = latest_track_data["artist"]["#text"]
-                    track_name = latest_track_data["name"]
-                    album = latest_track_data["album"]["#text"]
-                    art_url_str = None
-
-                    if (
-                        "image" in latest_track_data
-                        and isinstance(latest_track_data["image"], list)
-                        and len(latest_track_data["image"]) > 0
-                    ):
-                        for img in latest_track_data["image"]:
-                            if img.get("size") == "extralarge":
-                                art_url_str = img.get("#text")
-                                break
-                        if not art_url_str and latest_track_data["image"][-1]:
-                            art_url_str = latest_track_data["image"][-1].get("#text")
-
-                    track_data = {
-                        "artist": artist,
-                        "name": track_name,
-                        "album": album,
-                        "art_url": art_url_str if art_url_str else None,
-                    }
-
-                    return Track(**track_data)
-
+            if not track_list:
+                logger.debug("No recent tracks found in Last.fm response.")
                 return None
-            logger.warning("Could not parse track information from Last.fm response.")
-        except (KeyError, IndexError):
-            logger.exception("Error parsing the response data structure. Missing key or index")
-            return None
-        except ValidationError:
-            logger.exception("Data validation error creating Track object")
-            return None
-        else:
+
+            latest_track_data = track_list[0]
+
+            attributes = latest_track_data.get("@attr", {})
+            if not isinstance(attributes, dict) or attributes.get("nowplaying") != "true":
+                logger.debug("Latest track is not marked as 'nowplaying'.")
+                return None
+
+            return self._create_track(latest_track_data)
+
+        except (KeyError, IndexError, TypeError):
+            logger.exception("Error parsing the main Last.fm response structure. Data: %s", data)
             return None
 
     def download_and_display_art(self, track: Track, filename: str = "temp_album_art.png") -> bool:
