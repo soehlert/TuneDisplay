@@ -1,22 +1,19 @@
 """Gather the current playing song from last.fm and display it."""
 
 import argparse
+import importlib.metadata
 import json
 import logging
 import os
 import shutil
 import subprocess
 import sys
-import importlib.metadata
 import time
 
-from typing import Optional, Tuple
-
 import requests
+from dotenv import load_dotenv
 from pydantic import BaseModel, HttpUrl, ValidationError
 from pythonjsonlogger.json import JsonFormatter
-
-from dotenv import load_dotenv
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -39,7 +36,7 @@ def open_file(filepath):
         logger.error("Error opening image file: %s", e)
 
 
-def setup_and_validate() -> Tuple[argparse.Namespace, str, str, str]:
+def setup_and_validate() -> tuple[argparse.Namespace, str, str, str]:
     """Load config, parse args, and validate required settings."""
     load_dotenv()
 
@@ -199,16 +196,16 @@ class LastFmClient:
             return True
 
         except requests.exceptions.RequestException as img_e:
-            logging.error("Error downloading image: %s", img_e)
+            logging.exception("Error downloading image: %s", img_e)
             return False
         except OSError as io_e:
-            logging.error("Error saving image file: %s", io_e)
+            logging.exception("Error saving image file: %s", io_e)
             return False
 
 
 def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_filename: str):
     """Run the main loop to monitor Last.fm Now Playing status."""
-    previous_track: Optional[Track] = None
+    previous_track: Track | None = None
     logger.info(
         "Starting continuous monitoring for user '%s'.",
         client.username,
