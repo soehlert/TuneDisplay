@@ -153,22 +153,22 @@ class LastFmClient:
     @staticmethod
     def _extract_image_url(track_data: dict[str, Any]) -> str | None:
         """Extract the 'extralarge' image URL or the last available one."""
-        art_url_str = None
-        image_list = track_data.get("image")
+        art_url: str | None = None
+        image_list: list = track_data.get("image")
 
         if isinstance(image_list, list) and image_list:
             for img in image_list:
                 if isinstance(img, dict) and img.get("size") == "extralarge":
-                    art_url_str = img.get("#text")
-                    if art_url_str:
+                    art_url = img.get("#text")
+                    if art_url:
                         break
 
-            if not art_url_str:
+            if not art_url:
                 last_image = image_list[-1]
                 if isinstance(last_image, dict):
-                    art_url_str = last_image.get("#text")
+                    art_url = last_image.get("#text")
 
-        return art_url_str if art_url_str else None
+        return art_url if art_url else None
 
     def _create_track(self, track_data: dict[str, Any]) -> Track | None:
         """Create a track object."""
