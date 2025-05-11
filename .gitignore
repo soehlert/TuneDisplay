@@ -325,3 +325,8 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/linux,macos,python,visualstudiocode
 .idea/tunedisplay.iml
 .idea
+.idea/inspectionProfiles
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/workspace.xml
