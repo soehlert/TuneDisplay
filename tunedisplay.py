@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,8 @@ import requests
 from dotenv import load_dotenv
 from pydantic import BaseModel, HttpUrl
 from pythonjsonlogger.json import JsonFormatter
+
+from gui import TuneDisplayGUI
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -70,8 +73,8 @@ def setup_and_validate() -> tuple[argparse.Namespace, str, str, str]:
     parser.add_argument(
         "--interval",
         type=int,
-        default=3,
-        help="Seconds to wait between checking Last.fm (default: 3)",
+        default=5,
+        help="Seconds to wait between checking Last.fm (default: 5)",
     )
     args = parser.parse_args()
 
@@ -231,11 +234,11 @@ class LastFmClient:
             logger.exception("Error parsing the main Last.fm response structure. Data: %s", data)
             return None
 
-    def download_and_display_art(self, track: Track, filename: str = "temp_album_art.png") -> bool:
-        """Download and open the album art for a given track."""
+    def download_album_art(self, track: Track, filename: str = "temp_album_art.png") -> str | None:
+        """Download album art for a given track and return the filename."""
         if not track or not track.art_url:
             logger.info("No album art URL available for this track.")
-            return False
+            return None
 
         try:
             img_response = requests.get(str(track.art_url), stream=True, headers=self.headers, timeout=5)
@@ -245,19 +248,17 @@ class LastFmClient:
                 for chunk in img_response.iter_content(1024):
                     f.write(chunk)
 
-            open_file(filename)
+            return filename
 
         except requests.exceptions.RequestException:
             logger.exception("Error downloading image")
-            return False
+            return None
         except OSError:
             logger.exception("Error saving image file")
-            return False
-        else:
-            return True
+            return None
 
 
-def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_filename: str) -> None:
+def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_filename: str, display: TuneDisplayGUI) -> None:
     """Run the main loop to monitor Last.fm Now Playing status."""
     previous_track: Track | None = None
     logger.info(
@@ -265,7 +266,7 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
         client.username,
     )
 
-    while True:
+    while display.running:
         try:
             now_playing_track = client.get_now_playing()
 
@@ -276,12 +277,22 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
                     event_type = "now_playing_started" if not previous_track else "now_playing_changed"
                     logger.info(log_message, extra={"event_type": event_type, "track_details": track_dict})
 
+                    # Update GUI with track info
+                    display.update_song_info(
+                        title=now_playing_track.name,
+                        artist=now_playing_track.artist,
+                        album=now_playing_track.album
+                    )
+
                     if not args.no_art and now_playing_track.art_url:
                         logger.info(
-                            "Attempting to download and display album art",
+                            "Attempting to download album art",
                             extra={"art_url": str(now_playing_track.art_url)},
                         )
-                        client.download_and_display_art(now_playing_track, image_filename)
+                        # Download art and update GUI
+                        art_path = client.download_album_art(now_playing_track, image_filename)
+                        if art_path:
+                            display.update_album_art(art_path)
 
                 elif previous_track:
                     logger.info(
@@ -291,6 +302,9 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
                             "previous_track_details": previous_track.model_dump(mode="json"),
                         },
                     )
+                    # Update GUI to show not playing
+                    display.update_song_info()
+                    display.clear_album_art()
 
                 previous_track = now_playing_track
 
@@ -311,6 +325,14 @@ def cleanup(image_filename: str) -> None:
         except OSError:
             logger.exception("Error removing temporary image file %s", image_filename)
 
+def run_monitoring_thread(client, args, image_filename, gui_display):
+    """Run the monitoring loop in a separate thread"""
+    threading.Thread(
+        target=run_monitoring_loop,
+        args=(client, args, image_filename, gui_display),
+        daemon=True  # This makes the thread exit when the main program exits
+    ).start()
+
 
 if __name__ == "__main__":
     cli_args, lastfm_api_key, lastfm_username, album_art = setup_and_validate()
@@ -321,13 +343,18 @@ if __name__ == "__main__":
         logger.exception("Client Initialization Error")
         sys.exit(1)
 
+    logger.info("Creating display")
+    display = TuneDisplayGUI()
+
     try:
-        run_monitoring_loop(lastfm_client, cli_args, album_art)
+        # Start monitoring in a separate thread
+        run_monitoring_thread(lastfm_client, cli_args, album_art, display)
+
+        # Start the GUI main loop in the main thread
+        display.start()
+
     except KeyboardInterrupt:
         logger.info("Stopping monitoring script due to user request.")
+    finally:
         cleanup(album_art)
         sys.exit(0)
-    except Exception:
-        logger.exception("An unexpected critical error occurred in the main loop")
-        cleanup(album_art)
-        sys.exit(1)
