@@ -20,27 +20,71 @@ class TuneDisplayGUI:
         self.root = tk.Tk()
         self.root.title("TuneDisplay")
 
+        # Don't show the mouse cursor
+        self.root.config(cursor="none")
+
         # Make window stay on top
         self.root.attributes('-topmost', True)
+        self.root.attributes('-fullscreen', True)
 
-        # Set window size (width x height) and make it resizable
+        # Add escape key binding to exit fullscreen
+        self.root.bind("<Escape>", lambda event: self.toggle_fullscreen())
+
+        # Set window size (width x height)
         self.root.geometry("600x600")
-        self.root.minsize(400, 400)  # Set minimum size
 
-        # Create a main frame with padding
-        main_frame = tk.Frame(self.root, padx=20, pady=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # Set background color to black
+        bg_color = "#2a2a2a"  # Black
+        fg_color = "#f6f2f2"  # White
+        # Add transparency (0.0 is fully transparent, 1.0 is opaque)
+        self.root.attributes('-alpha', 0.55)
 
-        # Add a simple label for song information
-        self.song_label = tk.Label(main_frame, text="Currently not playing anything", font=("Helvetica", 14))
-        self.song_label.pack(pady=10)
+        self.root.configure(bg=bg_color)
+
+        # Create a frame for song information
+        info_frame = tk.Frame(self.root, bg=bg_color, padx=20, pady=20)
+        info_frame.pack(fill=tk.X, anchor="nw")
+
+        # Create separate labels for title, artist, and album
+        self.title_label = tk.Label(
+            info_frame,
+            text="",
+            font=("Helvetica", 48, "bold"),
+            fg=fg_color,
+            bg=bg_color,
+            anchor="w",
+            justify="left"
+        )
+        self.title_label.pack(fill=tk.X, anchor="w")
+
+        self.artist_label = tk.Label(
+            info_frame,
+            text="",
+            font=("Helvetica", 32),
+            fg=fg_color,
+            bg=bg_color,
+            anchor="w",
+            justify="left"
+        )
+        self.artist_label.pack(fill=tk.X, anchor="w")
+
+        self.album_label = tk.Label(
+            info_frame,
+            text="",
+            font=("Helvetica", 24),
+            fg=fg_color,
+            bg=bg_color,
+            anchor="w",
+            justify="left"
+        )
+        self.album_label.pack(fill=tk.X, anchor="w")
 
         # Create a frame for the album art
-        art_frame = tk.Frame(main_frame)
+        art_frame = tk.Frame(self.root, bg=bg_color)
         art_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
         # Add a label for album art
-        self.art_label = tk.Label(art_frame)
+        self.art_label = tk.Label(art_frame, bg=bg_color)
         self.art_label.pack(fill=tk.BOTH, expand=True)
 
         # Keep a reference to the PhotoImage to prevent garbage collection
@@ -62,6 +106,11 @@ class TuneDisplayGUI:
             # Add a small delay to avoid too many updates
             self.root.after(100, lambda: self.update_album_art(self.current_image_path))
 
+    def toggle_fullscreen(self):
+        """Toggle between fullscreen and windowed mode"""
+        is_fullscreen = self.root.attributes('-fullscreen')
+        self.root.attributes('-fullscreen', not is_fullscreen)
+
     def update_album_art(self, image_path):
         """Update the displayed album art"""
         if not self.running or not Path(image_path).exists():
@@ -77,12 +126,12 @@ class TuneDisplayGUI:
             img = Image.open(image_path)
 
             # Calculate available space
-            available_height = self.art_label.winfo_height() or 400
-            available_width = self.art_label.winfo_width() or 400
+            available_height = self.art_label.winfo_height() or 800
+            available_width = self.art_label.winfo_width() or 800
 
             # Ensure we have positive values
-            available_height = max(200, available_height)
-            available_width = max(200, available_width)
+            available_height = max(400, available_height)
+            available_width = max(400, available_width)
 
             # Calculate new size while maintaining aspect ratio
             width, height = img.size
@@ -95,8 +144,11 @@ class TuneDisplayGUI:
             new_width = int(width * ratio)
             new_height = int(height * ratio)
 
-            # Resize the image
-            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            # Reduce animation effects
+            self.root.after(0, lambda: self.art_label.config(image=self.current_image))
+
+            # Use simpler image resizing
+            img = img.resize((new_width, new_height), Image.Resampling.NEAREST)
 
             # Convert to PhotoImage and keep a reference
             photo = ImageTk.PhotoImage(img)
@@ -108,12 +160,23 @@ class TuneDisplayGUI:
         except Exception as e:
             logger.exception(f"Error updating album art: {e}")
 
-    def update_song_info(self, song_info):
-        """Update the displayed song information"""
-        if song_info and self.running:
-            logger.info(f"Updating GUI with: {song_info}")
-            # Use after to schedule the update on the main thread
-            self.root.after(0, lambda: self.song_label.config(text=song_info))
+    def update_song_info(self, title="", artist="", album=""):
+        """Update the displayed song information with separate fields"""
+        if not self.running:
+            return
+
+        logger.info(f"Updating GUI with: {title} - {artist} - {album}")
+
+        # Use after to schedule the updates on the main thread
+        if not title and not artist and not album:
+            # Not playing anything
+            self.root.after(0, lambda: self.title_label.config(text="Currently not playing anything"))
+            self.root.after(0, lambda: self.artist_label.config(text=""))
+            self.root.after(0, lambda: self.album_label.config(text=""))
+        else:
+            self.root.after(0, lambda: self.title_label.config(text=title))
+            self.root.after(0, lambda: self.artist_label.config(text=artist))
+            self.root.after(0, lambda: self.album_label.config(text=f"{album}" if album else ""))
 
     def clear_album_art(self):
         """Clear the album art"""

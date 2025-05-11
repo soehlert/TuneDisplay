@@ -73,8 +73,8 @@ def setup_and_validate() -> tuple[argparse.Namespace, str, str, str]:
     parser.add_argument(
         "--interval",
         type=int,
-        default=3,
-        help="Seconds to wait between checking Last.fm (default: 3)",
+        default=5,
+        help="Seconds to wait between checking Last.fm (default: 5)",
     )
     args = parser.parse_args()
 
@@ -278,8 +278,11 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
                     logger.info(log_message, extra={"event_type": event_type, "track_details": track_dict})
 
                     # Update GUI with track info
-                    display_text = f"Now Playing:\n\n{now_playing_track.artist}\n{now_playing_track.name}\nAlbum: {now_playing_track.album}"
-                    display.update_song_info(display_text)
+                    display.update_song_info(
+                        title=now_playing_track.name,
+                        artist=now_playing_track.artist,
+                        album=now_playing_track.album
+                    )
 
                     if not args.no_art and now_playing_track.art_url:
                         logger.info(
@@ -300,7 +303,7 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
                         },
                     )
                     # Update GUI to show not playing
-                    display.update_song_info("Currently not playing anything")
+                    display.update_song_info()
                     display.clear_album_art()
 
                 previous_track = now_playing_track
