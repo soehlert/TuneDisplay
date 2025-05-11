@@ -41,51 +41,57 @@ class TuneDisplayGUI:
 
         self.root.configure(bg=bg_color)
 
-        # Create a frame for song information
-        info_frame = tk.Frame(self.root, bg=bg_color, padx=20, pady=20)
-        info_frame.pack(fill=tk.X, anchor="nw")
+        # Create a main container frame
+        main_frame = tk.Frame(self.root, bg=bg_color)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-        # Create separate labels for title, artist, and album
+        # Create a frame for the album art (left side)
+        art_frame = tk.Frame(main_frame, bg=bg_color)
+        art_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+
+        # Add a label for album art
+        self.art_label = tk.Label(art_frame, bg=bg_color)
+        self.art_label.pack(fill=tk.BOTH, expand=True)
+
+        # Create a frame for song information (right side)
+        info_frame = tk.Frame(main_frame, bg=bg_color, padx=30)
+        info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
         self.title_label = tk.Label(
             info_frame,
             text="",
-            font=("Helvetica", 48, "bold"),
+            font=("Helvetica", 32, "bold"),
             fg=fg_color,
             bg=bg_color,
             anchor="w",
-            justify="left"
+            justify="left",
+            wraplength=500  # Limit text width
         )
-        self.title_label.pack(fill=tk.X, anchor="w")
+        self.title_label.pack(fill=tk.X, anchor="nw", pady=(0, 10))
 
         self.artist_label = tk.Label(
-            info_frame,
-            text="",
-            font=("Helvetica", 32),
-            fg=fg_color,
-            bg=bg_color,
-            anchor="w",
-            justify="left"
-        )
-        self.artist_label.pack(fill=tk.X, anchor="w")
-
-        self.album_label = tk.Label(
             info_frame,
             text="",
             font=("Helvetica", 24),
             fg=fg_color,
             bg=bg_color,
             anchor="w",
-            justify="left"
+            justify="left",
+            wraplength=500  # Limit text width
+        )
+        self.artist_label.pack(fill=tk.X, anchor="w", pady=(0, 10))
+
+        self.album_label = tk.Label(
+            info_frame,
+            text="",
+            font=("Helvetica", 18),
+            fg=fg_color,
+            bg=bg_color,
+            anchor="w",
+            justify="left",
+            wraplength=500  # Limit text width
         )
         self.album_label.pack(fill=tk.X, anchor="w")
-
-        # Create a frame for the album art
-        art_frame = tk.Frame(self.root, bg=bg_color)
-        art_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-
-        # Add a label for album art
-        self.art_label = tk.Label(art_frame, bg=bg_color)
-        self.art_label.pack(fill=tk.BOTH, expand=True)
 
         # Keep a reference to the PhotoImage to prevent garbage collection
         self.current_image = None
@@ -125,29 +131,22 @@ class TuneDisplayGUI:
             # Open the image
             img = Image.open(image_path)
 
-            # Calculate available space
-            available_height = self.art_label.winfo_height() or 800
-            available_width = self.art_label.winfo_width() or 800
+            # Get the current height of the window
+            window_height = self.root.winfo_height()
 
-            # Ensure we have positive values
-            available_height = max(400, available_height)
-            available_width = max(400, available_width)
+            # Use the full height of the window for the art
+            art_size = window_height
 
             # Calculate new size while maintaining aspect ratio
             width, height = img.size
-            width_ratio = available_width / width
-            height_ratio = available_height / height
+            if width > height:
+                new_width = art_size
+                new_height = int(height * (art_size / width))
+            else:
+                new_height = art_size
+                new_width = int(width * (art_size / height))
 
-            # Use the smaller ratio to ensure the image fits completely
-            ratio = min(width_ratio, height_ratio)
-
-            new_width = int(width * ratio)
-            new_height = int(height * ratio)
-
-            # Reduce animation effects
-            self.root.after(0, lambda: self.art_label.config(image=self.current_image))
-
-            # Use simpler image resizing
+            # Use simpler image resizing for better performance on Raspberry Pi
             img = img.resize((new_width, new_height), Image.Resampling.NEAREST)
 
             # Convert to PhotoImage and keep a reference
