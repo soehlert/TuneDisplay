@@ -43,7 +43,7 @@ class TuneDisplayGUI:
 
         # Create a main container frame
         main_frame = tk.Frame(self.root, bg=bg_color)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=3, pady=5)
 
         # Create a frame for the album art (left side)
         art_frame = tk.Frame(main_frame, bg=bg_color)

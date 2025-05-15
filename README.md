@@ -1,6 +1,6 @@
 # TuneDisplay
 
-A simple Python script to monitor and display your currently playing track from Last.fm. It shows the artist, track, and album, and can optionally display the album art.
+A simple Python script to monitor and display your currently playing track from Last.fm. It shows the artist, track, album, and album art.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ uv pip install .
 ```
     
 ### Configuration
-Create a .env file in the tunedisplay directory (the same directory as pyproject.toml).
+Create a .env file in the tunedisplay directory.
 Add your Last.fm credentials to the .env file:
 
 ```Text Only
@@ -32,17 +32,13 @@ LASTFM_USERNAME=YOUR_LASTFM_USERNAME
 TUNEDISPLAY_IMAGE_FILENAME=album_art.png
 ```
 
-Replace the placeholder values with your actual Last.fm API key and username.
-
 ### Usage
-Ensure your virtual environment is activated if you created one. Then, run the script from the terminal within the 
-project directory:
+Run the script from the terminal within the project directory:
 
 ``` bash
 python tunedisplay.py
 ```
-The script will start checking Last.fm periodically. When a track is playing, it will log the details. If album art 
-display is enabled (default), it will attempt to download and open the art.
+The script will start checking Last.fm periodically. When a track is playing it will display album art. 
 
 ### Command-line Options
 
