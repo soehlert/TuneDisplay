@@ -15,102 +15,80 @@ if not logger.handlers:
 
 class TuneDisplayGUI:
     def __init__(self):
-        # Create the main window
         logger.info("Initializing TuneDisplayGUI")
         self.root = tk.Tk()
         self.root.title("TuneDisplay")
-
-        # Don't show the mouse cursor
         self.root.config(cursor="none")
-
-        # Make window stay on top
         self.root.attributes('-topmost', True)
         self.root.attributes('-fullscreen', True)
-
-        # Add escape key binding to exit fullscreen
         self.root.bind("<Escape>", lambda event: self.toggle_fullscreen())
 
-        # Set window size (width x height)
-        self.root.geometry("600x600")
-
-        # Set background color to black
-        bg_color = "#2a2a2a"  # Black
-        fg_color = "#f6f2f2"  # White
-        # Add transparency (0.0 is fully transparent, 1.0 is opaque)
-        self.root.attributes('-alpha', 0.55)
-
+        bg_color = "#2a2a2a"
+        fg_color = "#f6f2f2"
         self.root.configure(bg=bg_color)
 
-        # Create a main container frame
+        # Main container with grid layout
         main_frame = tk.Frame(self.root, bg=bg_color)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=3, pady=5)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.grid_rowconfigure(0, weight=9)  # 90% for art
+        main_frame.grid_rowconfigure(1, weight=1)  # 10% for info
+        main_frame.grid_columnconfigure(0, weight=1)
 
-        # Create a frame for the album art (left side)
+        # Art frame (top, 90%)
         art_frame = tk.Frame(main_frame, bg=bg_color)
-        art_frame.pack(side=tk.LEFT, fill=tk.Y, expand=False)
+        art_frame.grid(row=0, column=0, sticky="nsew")
 
-        # Add a label for album art
         self.art_label = tk.Label(art_frame, bg=bg_color)
         self.art_label.pack(fill=tk.BOTH, expand=True)
 
-        # Create a frame for song information (right side)
-        info_frame = tk.Frame(main_frame, bg=bg_color, padx=30)
-        info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Info frame (bottom, 10%)
+        info_frame = tk.Frame(main_frame, bg=bg_color)
+        info_frame.grid(row=1, column=0, sticky="ew", pady=(0, 20))
 
-        self.title_label = tk.Label(
-            info_frame,
-            text="",
-            font=("Helvetica", 32, "bold"),
-            fg=fg_color,
-            bg=bg_color,
-            anchor="w",
-            justify="left",
-            wraplength=500  # Limit text width
-        )
-        self.title_label.pack(fill=tk.X, anchor="nw", pady=(0, 10))
+        # Labels WITHOUT any padding/font yet
+        self.title_label = tk.Label(info_frame, text="", fg=fg_color, bg=bg_color, anchor="w")
+        self.artist_label = tk.Label(info_frame, text="", fg=fg_color, bg=bg_color, anchor="w")
+        self.album_label = tk.Label(info_frame, text="", fg=fg_color, bg=bg_color, anchor="w")
 
-        self.artist_label = tk.Label(
-            info_frame,
-            text="",
-            font=("Helvetica", 24),
-            fg=fg_color,
-            bg=bg_color,
-            anchor="w",
-            justify="left",
-            wraplength=500  # Limit text width
-        )
-        self.artist_label.pack(fill=tk.X, anchor="w", pady=(0, 10))
-
-        self.album_label = tk.Label(
-            info_frame,
-            text="",
-            font=("Helvetica", 18),
-            fg=fg_color,
-            bg=bg_color,
-            anchor="w",
-            justify="left",
-            wraplength=500  # Limit text width
-        )
-        self.album_label.pack(fill=tk.X, anchor="w")
-
-        # Keep a reference to the PhotoImage to prevent garbage collection
         self.current_image = None
-
-        # Flag to track if we're running
         self.running = True
-
-        # Bind resize event to update album art when window size changes
-        self.root.bind("<Configure>", self.on_resize)
-
-        # Store the current image path for resize events
         self.current_image_path = None
 
+        # ONLY ONE bind
+        self.root.bind("<Configure>", self.on_resize)
+
     def on_resize(self, event):
-        """Handle window resize events"""
-        # Only process resize events for the root window
-        if event.widget == self.root and self.current_image_path:
-            # Add a small delay to avoid too many updates
-            self.root.after(100, lambda: self.update_album_art(self.current_image_path))
+        """Calculate ALL sizing based on actual window dimensions"""
+        if event.widget != self.root:
+            return
+
+        window_height = self.root.winfo_height()
+        window_width = self.root.winfo_width()
+
+        title_size = max(16, int(window_height * 0.06))
+        artist_size = max(12, int(window_height * 0.04))
+        album_size = max(10, int(window_height * 0.03))
+        padding_x = max(5, int(window_width * 0.02))
+
+        # Center the labels vertically within the info_frame
+        info_frame = self.title_label.master
+        info_frame.grid_rowconfigure(0, weight=1)
+        info_frame.grid_rowconfigure(1, weight=1)
+        info_frame.grid_rowconfigure(2, weight=1)
+        info_frame.grid_columnconfigure(0, weight=1)
+
+        self.title_label.config(font=("Helvetica", title_size, "bold"), padx=padding_x, anchor="center")
+        self.title_label.grid(row=0, column=0, sticky="ew")
+
+        self.artist_label.config(font=("Helvetica", artist_size), padx=padding_x, anchor="center")
+        self.artist_label.grid(row=1, column=0, sticky="ew")
+
+        self.album_label.config(font=("Helvetica", album_size), padx=padding_x, anchor="center")
+        self.album_label.grid(row=2, column=0, sticky="ew")
+
+
+        if self.current_image_path:
+            self.update_album_art(self.current_image_path)
 
     def toggle_fullscreen(self):
         """Toggle between fullscreen and windowed mode"""
@@ -126,7 +104,7 @@ class TuneDisplayGUI:
         self.current_image_path = image_path
 
         try:
-            logger.info(f"Updating album art with: {image_path}")
+            logger.debug(f"Updating album art with: {image_path}")
 
             # Open the image
             img = Image.open(image_path)

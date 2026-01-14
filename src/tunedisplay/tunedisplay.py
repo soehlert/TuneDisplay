@@ -260,7 +260,7 @@ class LastFmClient:
 
 def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_filename: str, display: TuneDisplayGUI) -> None:
     """Run the main loop to monitor Last.fm Now Playing status."""
-    previous_track: Track | None = None
+    last_track: Track | None = None
     logger.info(
         "Starting continuous monitoring for user %s",
         client.username,
@@ -270,11 +270,11 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
         try:
             now_playing_track = client.get_now_playing()
 
-            if now_playing_track != previous_track:
+            if now_playing_track != last_track:
                 if now_playing_track:
                     track_dict = now_playing_track.model_dump(mode="json")
-                    log_message = "New track playing" if previous_track else "Playback started"
-                    event_type = "now_playing_started" if not previous_track else "now_playing_changed"
+                    log_message = "New track playing" if last_track else "Playback started"
+                    event_type = "now_playing_started" if not last_track else "now_playing_changed"
                     logger.info(log_message, extra={"event_type": event_type, "track_details": track_dict})
 
                     # Update GUI with track info
@@ -294,19 +294,19 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
                         if art_path:
                             display.update_album_art(art_path)
 
-                elif previous_track:
+                elif last_track:
                     logger.info(
                         "Playback stopped",
                         extra={
                             "event_type": "now_playing_stopped",
-                            "previous_track_details": previous_track.model_dump(mode="json"),
+                            "previous_track_details": last_track.model_dump(mode="json"),
                         },
                     )
                     # Update GUI to show not playing
                     display.update_song_info()
                     display.clear_album_art()
 
-                previous_track = now_playing_track
+                last_track = now_playing_track
 
         except Exception:
             logger.exception("Error during check cycle")
@@ -342,6 +342,11 @@ if __name__ == "__main__":
     except ValueError:
         logger.exception("Client Initialization Error")
         sys.exit(1)
+
+    if cli_args.no_art:
+        logger.info("Running in CLI-only mode (no GUI)")
+        previous_track = None
+
 
     logger.info("Creating display")
     display = TuneDisplayGUI()
