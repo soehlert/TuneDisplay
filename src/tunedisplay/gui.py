@@ -43,7 +43,7 @@ class TuneDisplayGUI:
 
         # Info frame (bottom, 10%)
         info_frame = tk.Frame(main_frame, bg=bg_color)
-        info_frame.grid(row=1, column=0, sticky="ew", pady=(0, 20))
+        info_frame.grid(row=1, column=0, sticky="ew", pady=(5, 20))
 
         # Labels WITHOUT any padding/font yet
         self.title_label = tk.Label(info_frame, text="", fg=fg_color, bg=bg_color, anchor="w")
