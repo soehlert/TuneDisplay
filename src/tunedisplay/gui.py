@@ -1,8 +1,8 @@
 import logging
 import tkinter as tk
+from pathlib import Path
 
 from PIL import Image, ImageTk
-from pathlib import Path
 from pythonjsonlogger.json import JsonFormatter
 
 logger = logging.getLogger()
@@ -19,8 +19,8 @@ class TuneDisplayGUI:
         self.root = tk.Tk()
         self.root.title("TuneDisplay")
         self.root.config(cursor="none")
-        self.root.attributes('-topmost', True)
-        self.root.attributes('-fullscreen', True)
+        self.root.attributes("-topmost", True)
+        self.root.attributes("-fullscreen", True)
         self.root.bind("<Escape>", lambda event: self.toggle_fullscreen())
 
         bg_color = "#2a2a2a"
@@ -90,8 +90,8 @@ class TuneDisplayGUI:
 
     def toggle_fullscreen(self):
         """Toggle between fullscreen and windowed mode"""
-        is_fullscreen = self.root.attributes('-fullscreen')
-        self.root.attributes('-fullscreen', not is_fullscreen)
+        is_fullscreen = self.root.attributes("-fullscreen")
+        self.root.attributes("-fullscreen", not is_fullscreen)
 
     def update_album_art(self, image_path):
         """Update the displayed album art"""
@@ -148,6 +148,7 @@ class TuneDisplayGUI:
             self.root.after(0, lambda: self.title_label.config(text="Currently not playing anything"))
             self.root.after(0, lambda: self.artist_label.config(text=""))
             self.root.after(0, lambda: self.album_label.config(text=""))
+            self.root.after(0, lambda: self.clear_album_art())
         else:
             self.root.after(0, lambda: self.title_label.config(text=title))
             self.root.after(0, lambda: self.artist_label.config(text=artist))
@@ -157,7 +158,7 @@ class TuneDisplayGUI:
         """Clear the album art"""
         if self.running:
             self.current_image = None
-            self.root.after(0, lambda: self.art_label.config(image=''))
+            self.root.after(0, lambda: self.art_label.config(image=""))
 
     def start(self):
         """Start the GUI main loop"""

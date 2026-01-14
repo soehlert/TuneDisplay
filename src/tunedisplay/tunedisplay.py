@@ -15,10 +15,9 @@ from typing import Any
 
 import requests
 from dotenv import load_dotenv
+from gui import TuneDisplayGUI
 from pydantic import BaseModel, HttpUrl
 from pythonjsonlogger.json import JsonFormatter
-
-from gui import TuneDisplayGUI
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -134,7 +133,7 @@ class LastFmClient:
         params["format"] = "json"
 
         try:
-            response = requests.get(self.BASE_URL, params=params, timeout=5)
+            response = requests.get(self.BASE_URL, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
             if "error" in data:
@@ -241,12 +240,11 @@ class LastFmClient:
             return None
 
         try:
-            img_response = requests.get(str(track.art_url), stream=True, headers=self.headers, timeout=5)
+            img_response = requests.get(str(track.art_url), stream=True, headers=self.headers, timeout=10)
             img_response.raise_for_status()
 
             with Path(filename).open("wb") as f:
-                for chunk in img_response.iter_content(1024):
-                    f.write(chunk)
+                f.writelines(img_response.iter_content(1024))
 
             return filename
 
@@ -258,7 +256,12 @@ class LastFmClient:
             return None
 
 
-def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_filename: str, display: TuneDisplayGUI) -> None:
+def run_monitoring_loop(
+    client: LastFmClient,
+    args: argparse.Namespace,
+    image_filename: str,
+    display: TuneDisplayGUI,
+) -> None:
     """Run the main loop to monitor Last.fm Now Playing status."""
     last_track: Track | None = None
     logger.info(
@@ -281,7 +284,7 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
                     display.update_song_info(
                         title=now_playing_track.name,
                         artist=now_playing_track.artist,
-                        album=now_playing_track.album
+                        album=now_playing_track.album,
                     )
 
                     if not args.no_art and now_playing_track.art_url:
@@ -331,7 +334,7 @@ def run_monitoring_thread(client, args, image_filename, gui_display):
     threading.Thread(
         target=run_monitoring_loop,
         args=(client, args, image_filename, gui_display),
-        daemon=True  # This makes the thread exit when the main program exits
+        daemon=True,  # This makes the thread exit when the main program exits
     ).start()
 
 
