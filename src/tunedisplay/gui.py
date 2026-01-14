@@ -36,16 +36,15 @@ class TuneDisplayGUI:
 
         # Art frame (top, 90%)
         art_frame = tk.Frame(main_frame, bg=bg_color)
-        art_frame.grid(row=0, column=0, sticky="nsew")
+        art_frame.grid(row=0, column=0, sticky="nsew", pady=10)
 
         self.art_label = tk.Label(art_frame, bg=bg_color)
         self.art_label.pack(fill=tk.BOTH, expand=True)
 
         # Info frame (bottom, 10%)
         info_frame = tk.Frame(main_frame, bg=bg_color)
-        info_frame.grid(row=1, column=0, sticky="ew", pady=(5, 20))
+        info_frame.grid(row=1, column=0, sticky="ew", pady=(10, 10))
 
-        # Labels WITHOUT any padding/font yet
         self.title_label = tk.Label(info_frame, text="", fg=fg_color, bg=bg_color, anchor="w")
         self.artist_label = tk.Label(info_frame, text="", fg=fg_color, bg=bg_color, anchor="w")
         self.album_label = tk.Label(info_frame, text="", fg=fg_color, bg=bg_color, anchor="w")
@@ -54,7 +53,6 @@ class TuneDisplayGUI:
         self.running = True
         self.current_image_path = None
 
-        # ONLY ONE bind
         self.root.bind("<Configure>", self.on_resize)
 
     def on_resize(self, event):

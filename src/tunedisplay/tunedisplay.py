@@ -306,7 +306,8 @@ def run_monitoring_loop(client: LastFmClient, args: argparse.Namespace, image_fi
                     display.update_song_info()
                     display.clear_album_art()
 
-                last_track = now_playing_track
+            last_track = now_playing_track
+
 
         except Exception:
             logger.exception("Error during check cycle")
